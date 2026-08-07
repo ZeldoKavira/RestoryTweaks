@@ -110,20 +110,17 @@ fi
 
 # ---------------------------------------------------------------- the mod
 
-say "Fetching the latest release of the mod..."
+say "Fetching the latest build of the mod..."
 
-# Ask the API for the newest release asset rather than assuming a version number, so this script
-# keeps working as new releases are published.
-API="https://api.github.com/repos/$REPO/releases/latest"
-DL_URL="$(curl -fsSL "$API" | grep -o "https://github.com/$REPO/releases/download/[^\"]*$PLUGIN" | head -1 || true)"
+# Pinned to the rolling "latest" tag that CI republishes on every push, NOT to the API's
+# /releases/latest. That endpoint picks whichever release it considers newest, and when the rolling
+# release was briefly absent it quietly fell back to an old version tag - installing a stale DLL and
+# reporting success. A fixed tag either has the current build or fails outright, which is far better.
+DL_URL="https://github.com/$REPO/releases/download/latest/$PLUGIN"
 
-if [ -z "$DL_URL" ]; then
-    die "No $PLUGIN found in the latest release of $REPO. Has a release been published yet?"
-fi
-
-TAG="$(printf '%s' "$DL_URL" | awk -F/ '{print $(NF-1)}')"
-say "Installing $PLUGIN ($TAG)..."
-curl -fsSL "$DL_URL" -o "$TMP/$PLUGIN" || die "Mod download failed."
+say "Installing $PLUGIN..."
+curl -fsSL "$DL_URL" -o "$TMP/$PLUGIN" \
+    || die "Could not download $PLUGIN from $DL_URL - check the repo's Actions tab for a failed build."
 
 mkdir -p "$PLUGIN_DIR"
 cp "$TMP/$PLUGIN" "$PLUGIN_DIR/$PLUGIN"
@@ -133,7 +130,11 @@ cp "$TMP/$PLUGIN" "$PLUGIN_DIR/$PLUGIN"
 if [ "$(stat -c%s "$TMP/$PLUGIN")" != "$(stat -c%s "$PLUGIN_DIR/$PLUGIN")" ]; then
     die "The copied plugin does not match what was downloaded."
 fi
-ok "$PLUGIN installed ($(stat -c%s "$PLUGIN_DIR/$PLUGIN") bytes)."
+# Print a fingerprint as well as the size, so "did my update actually land?" has an answer you can
+# compare against the release page instead of a guess.
+SUM="unavailable"
+command -v sha256sum >/dev/null 2>&1 && SUM="$(sha256sum "$PLUGIN_DIR/$PLUGIN" | cut -c1-16)"
+ok "$PLUGIN installed ($(stat -c%s "$PLUGIN_DIR/$PLUGIN") bytes, sha256 $SUM)."
 
 # ---------------------------------------------------------------- launch option
 
