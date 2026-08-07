@@ -19,7 +19,9 @@ enough to resolder.
 **Auto-assemble** — once every part is identified, cleaned and undamaged, the device is put back
 together: parts, screws and multi-slot battery rows, paced so you can watch it happen. Parts still
 bolted in count as unexamined, so it waits until you've actually been through the whole device, and
-it stops the moment you leave the repair pad rather than finishing up behind your back.
+it stops the moment you leave the repair pad rather than finishing up behind your back. **F7** turns
+it off and on mid-game — it also abandons a run already under way, so you can take a device back
+apart by hand. The setting is saved, and F6 still assembles on demand while it's off.
 
 ## Settings
 
@@ -29,7 +31,7 @@ it stops the moment you leave the repair pad rather than finishing up behind you
 | --- | --- |
 | `OrderParts` | `BuyImmediately`, `QuantityPerDoubleClick`, `OnlyMissingParts` |
 | `Delivery` | `PartsStraightToPartsBox`, `ShowNotification` |
-| `AutoAssemble` | `RequireEveryPartReady`, `DelayBetweenPartsMs` (750), `DelayBetweenScrewsMs` (200), `AssembleNowKey` (F6) |
+| `AutoAssemble` | `RequireEveryPartReady`, `DelayBetweenPartsMs` (750), `DelayBetweenScrewsMs` (200), `AssembleNowKey` (F6), `ToggleKey` (F7) |
 | `AutoOpenCleaner` | `Enabled`, `SelectTool`, `OnlyForDeviceParts` |
 
 ## Installing

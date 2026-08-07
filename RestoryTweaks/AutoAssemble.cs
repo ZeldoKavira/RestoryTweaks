@@ -31,6 +31,7 @@ namespace RestoryTweaks
         internal static ConfigEntry<float> PartDelayMs;
         internal static ConfigEntry<float> ScrewDelayMs;
         internal static ConfigEntry<KeyboardShortcut> Key;
+        internal static ConfigEntry<KeyboardShortcut> ToggleKey;
 
         public static void Init(ConfigFile cfg)
         {
@@ -48,6 +49,10 @@ namespace RestoryTweaks
                     new AcceptableValueRange<float>(0f, 5000f)));
             Key = cfg.Bind("AutoAssemble", "AssembleNowKey", new KeyboardShortcut(KeyCode.F6),
                 "Assemble right now, without waiting for every part to be ready.");
+            ToggleKey = cfg.Bind("AutoAssemble", "ToggleKey", new KeyboardShortcut(KeyCode.F7),
+                "Turn automatic assembly on or off without restarting, and stop a run already " +
+                "under way. The new setting is saved, so it survives a restart. The assemble-now " +
+                "key still works while it's off.");
         }
 
         internal static bool On => Enabled != null && Enabled.Value;
@@ -433,6 +438,7 @@ namespace RestoryTweaks
     {
         private float _nextCheck;
         private bool _running;
+        private bool _cancel;
         private int _lastStuckAt;
         private bool _saidStuck;
 
@@ -469,10 +475,34 @@ namespace RestoryTweaks
             return n;
         }
 
+        // Flip automatic assembly, and abandon anything in progress.
+        //
+        // Written straight back to the config entry rather than held in a separate runtime flag, so
+        // there's one answer to "is it on" and the choice survives a restart - BepInEx saves the
+        // file when the value is set.
+        private void Toggle()
+        {
+            bool on = !AutoAssembleConfig.Enabled.Value;
+            AutoAssembleConfig.Enabled.Value = on;
+
+            _cancel = !on;                 // stop the current run; turning it back on doesn't
+            _lastStuckAt = 0;              // a fresh decision deserves a fresh attempt
+            _saidStuck = false;
+            _lastIdleReason = 0;
+
+            string message = on ? "Auto-assemble ON" : "Auto-assemble OFF";
+            Plugin.Log.LogInfo($"[AutoAssemble] {message}.");
+            Toast.Show(message);
+        }
+
         private void Update()
         {
             try
             {
+                // Ahead of the _running guard on purpose: the point of the toggle is to be able to
+                // stop a run that's already under way and put a device back the way you want it.
+                if (AutoAssembleConfig.ToggleKey.Value.IsDown()) Toggle();
+
                 if (_running) return;
 
                 if (AutoAssembleConfig.Key.Value.IsDown())
@@ -642,6 +672,7 @@ namespace RestoryTweaks
         private IEnumerator Run(bool force)
         {
             _running = true;
+            _cancel = false;       // a cancel only applies to the run it was asked for
             yield return RunInner(force);
             _running = false;      // reached even when RunInner stops early
         }
@@ -676,10 +707,10 @@ namespace RestoryTweaks
             int fitted = 0, screws = 0;
             string screwProblem = null;
             bool progress = true;
-            bool leftPad = false;
+            string stopped = null;
 
             // Repeat passes: fitting a part unblocks sockets that weren't available before.
-            while (progress && !leftPad)
+            while (progress && stopped == null)
             {
                 progress = false;
 
@@ -731,8 +762,10 @@ namespace RestoryTweaks
                     if (ms > 0f) yield return new WaitForSeconds(ms / 1000f);
 
                     // Re-check after every wait, not just at the start: this is the window in which
-                    // you can leave, and stopping here means what's already fitted stays fitted.
-                    if (!AutoAssemble.StillOnRepairPad(device)) leftPad = true;
+                    // you can leave or switch it off, and stopping here means what's already fitted
+                    // stays fitted rather than being unwound.
+                    if (_cancel) stopped = "you switched auto-assemble off";
+                    else if (!AutoAssemble.StillOnRepairPad(device)) stopped = "you left the repair pad";
 
                     // The socket list is being walked while the device changes underneath it, so
                     // restart the sweep rather than continuing over stale availability.
@@ -740,12 +773,12 @@ namespace RestoryTweaks
                 }
             }
 
-            if (leftPad)
+            if (stopped != null)
             {
                 // Deliberately no stuck fingerprint: nothing failed here, it was interrupted. Come
-                // back to the bench and it picks up where it left off.
-                Plugin.Log.LogInfo($"[AutoAssemble] Stopped - you left the repair pad. "
-                                   + $"Fitted {fitted} part(s) ({screws} screw(s)) before stopping.");
+                // back to the bench, or switch it on again, and it picks up where it left off.
+                Plugin.Log.LogInfo($"[AutoAssemble] Stopped - {stopped}. "
+                                   + $"Fitted {fitted} part(s) ({screws} screw(s)) first.");
                 yield break;
             }
 
