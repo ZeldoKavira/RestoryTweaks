@@ -140,6 +140,42 @@ namespace RestoryTweaks
             return loose;
         }
 
+        // The first part of this device that isn't finished yet, looking at parts still installed as
+        // well as loose ones.
+        //
+        // Checking only the loose parts was wrong: a part sitting in its socket is unexamined until
+        // you pull it out and inspect it, so assembly would start as soon as the handful you'd
+        // already taken out were done - screwing the case shut over everything you hadn't looked at.
+        // The game treats installed parts as inspectable state too; its own "Inspect Placed Device"
+        // cheat walks Device.ElementSockets and sets IsInspected on each socket's NestedElement.
+        public static ElementBase FirstUnreadyPart(Device device, List<ElementBase> loose, out bool installed)
+        {
+            installed = false;
+
+            if (loose != null)
+                foreach (var el in loose)
+                    if (!IsReady(el)) return el;
+
+            try
+            {
+                foreach (var socket in device.ElementSockets)
+                {
+                    if (socket == null) continue;
+                    var el = socket.NestedElement;
+                    if (el != null && !IsReady(el)) { installed = true; return el; }
+                }
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoAssemble] readiness scan failed: {e.Message}"); }
+
+            return null;
+        }
+
+        public static string Describe(ElementBase el)
+        {
+            try { return el != null && el.Info != null ? el.Info.name : "a part"; }
+            catch { return "a part"; }
+        }
+
         // Drive the screw in the same way the player does.
         //
         // Clicking a screw's phantom calls ElementProjection.Activate(), and the socket's handler
@@ -305,9 +341,9 @@ namespace RestoryTweaks
 
             loose = LooseParts(device);
 
-            if (AutoAssembleConfig.RequireAllReady.Value)
-                foreach (var el in loose)
-                    if (!IsReady(el)) return false;
+            bool inDevice;
+            if (AutoAssembleConfig.RequireAllReady.Value
+                && FirstUnreadyPart(device, loose, out inDevice) != null) return false;
 
             if (loose.Count > 0) return true;
 
@@ -516,19 +552,25 @@ namespace RestoryTweaks
                 else
                 {
                     var loose = AutoAssemble.LooseParts(device);
-                    int notReady = 0;
-                    string example = null;
+
+                    // Count both loose and still-installed parts, so "waiting" names something you
+                    // can actually go and deal with.
+                    int notReady = 0, notReadyInDevice = 0;
                     foreach (var el in loose)
-                        if (!AutoAssemble.IsReady(el))
-                        {
-                            notReady++;
-                            if (example == null && el.Info != null) example = el.Info.name;
-                        }
+                        if (!AutoAssemble.IsReady(el)) notReady++;
+                    foreach (var socket in device.ElementSockets)
+                    {
+                        if (socket == null || socket.NestedElement == null) continue;
+                        if (!AutoAssemble.IsReady(socket.NestedElement)) { notReady++; notReadyInDevice++; }
+                    }
 
                     if (notReady > 0)
                     {
-                        reason = $"{notReady} part(s) not ready yet" + (example != null ? $" (e.g. {example})" : "");
-                        key = 4000 + notReady;
+                        bool inDevice;
+                        var first = AutoAssemble.FirstUnreadyPart(device, loose, out inDevice);
+                        reason = $"{notReady} part(s) not ready yet ({notReadyInDevice} still in the device)" +
+                                 (first != null ? $", e.g. {AutoAssemble.Describe(first)}" : "");
+                        key = 4000 + notReady * 10 + (notReadyInDevice > 0 ? 1 : 0);
                     }
                     else { reason = $"nothing to fit ({loose.Count} loose part(s))"; key = 5000 + loose.Count; }
                 }
@@ -556,8 +598,14 @@ namespace RestoryTweaks
             var loose = AutoAssemble.LooseParts(device);
             if (!force && AutoAssembleConfig.RequireAllReady.Value)
             {
-                foreach (var el in loose)
-                    if (!AutoAssemble.IsReady(el)) { Plugin.Log.LogInfo("[AutoAssemble] A part isn't ready; not starting."); yield break; }
+                bool inDevice;
+                var unready = AutoAssemble.FirstUnreadyPart(device, loose, out inDevice);
+                if (unready != null)
+                {
+                    Plugin.Log.LogInfo($"[AutoAssemble] {AutoAssemble.Describe(unready)} isn't ready " +
+                                       $"({(inDevice ? "still installed" : "loose")}); not starting.");
+                    yield break;
+                }
             }
 
             int fitted = 0, screws = 0;
