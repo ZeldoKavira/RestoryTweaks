@@ -5,8 +5,21 @@
 # Installs BepInEx and the latest release of the mod, then tells you the one launch option you
 # need to set. Re-run it any time to update the mod.
 #
+# Run straight from the repo, no clone needed:
+#
+#   curl -sSL https://raw.githubusercontent.com/ZeldoKavira/RestoryTweaks/main/install-steamdeck.sh | bash
+#
+# To uninstall, arguments go after "-s --" because the script arrives on stdin:
+#
+#   curl -sSL https://raw.githubusercontent.com/ZeldoKavira/RestoryTweaks/main/install-steamdeck.sh | bash -s -- --uninstall
+#
+# Or, if you have a local copy:
+#
 #   ./install-steamdeck.sh              install or update
 #   ./install-steamdeck.sh --uninstall  remove the mod (leaves BepInEx)
+#
+# Nothing here reads $0 or the script's own directory, so piping into bash behaves identically to
+# running a downloaded copy.
 #
 # Note on Proton: Restory is a Windows build running under Proton, so this installs the WINDOWS
 # build of BepInEx. Its loader is a winhttp.dll shim that Proton will only pick up when the
@@ -48,7 +61,9 @@ find_game() {
 GAME="${GAME_DIR:-}"
 if [ -z "$GAME" ]; then
     say "Looking for Restory..."
-    GAME="$(find_game)" || die "Couldn't find Restory. Re-run with GAME_DIR=/path/to/Restory ./install-steamdeck.sh"
+    # When piped, the env var has to go in front of bash - not in front of curl, which would only
+    # set it for curl's own process.
+    GAME="$(find_game)" || die "Couldn't find Restory. Re-run as: curl -sSL <url> | GAME_DIR=/path/to/Restory bash"
 fi
 [ -f "$GAME/Restory.exe" ] || die "Not a Restory install: $GAME"
 ok "$GAME"

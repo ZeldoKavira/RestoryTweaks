@@ -26,24 +26,47 @@ back together: parts, screws and multi-slot battery rows, paced so you can watch
 
 ## Installing
 
-**Windows** — unzip BepInEx 5 (x64) into the game folder, then drop `RestoryTweaks.dll` into
-`BepInEx/plugins/`.
+**Steam Deck / Linux** — one command, no clone:
 
-**Steam Deck / Linux** — run [`install-steamdeck.sh`](install-steamdeck.sh). It finds the game,
-installs BepInEx and the latest release of the mod, and prints the launch option you need. The game
-runs under Proton, so BepInEx needs `WINEDLLOVERRIDES="winhttp=n,b" %command%` set in the game's
-launch options — the script tells you this and why.
+```bash
+curl -sSL https://raw.githubusercontent.com/ZeldoKavira/RestoryTweaks/main/install-steamdeck.sh | bash
+```
+
+It finds the game, installs BepInEx and the latest build, and prints the launch option you need.
+Run it again any time to update. To remove the mod, `… | bash -s -- --uninstall` (arguments go after
+`-s --` because the script arrives on stdin).
+
+Restory is a Windows build running under Proton, so this installs the *Windows* BepInEx. Its loader
+is a `winhttp.dll` shim that Proton only picks up when you set this in the game's launch options:
+
+```
+WINEDLLOVERRIDES="winhttp=n,b" %command%
+```
+
+**Windows** — unzip BepInEx 5 (x64) into the game folder, then drop `RestoryTweaks.dll` from the
+[latest release](https://github.com/ZeldoKavira/RestoryTweaks/releases/latest) into `BepInEx/plugins/`.
 
 ## Building
 
-Requires the game installed, since it references the game's own assemblies:
+Every push to `main` builds on CI and republishes the rolling `latest` release, so the installer
+above always fetches a current DLL.
 
-```
+To build locally you need the game installed, since it references the game's own assemblies:
+
+```bash
 dotnet build RestoryTweaks/RestoryTweaks.csproj -c Release
 ```
 
 Override the game location with `-p:GameDir="..."`. The real game code lives in
 `Restory_Data/Managed/Restory.Assembly.dll` — `Assembly-CSharp.dll` is nearly empty.
+
+CI can't install the game, so it compiles against stripped reference assemblies in
+[`refs/Managed`](refs/Managed) — metadata only, no method bodies, none of the game's code.
+Regenerate them after a game update, or when the mod starts referencing a new assembly:
+
+```
+.\refs\update-refs.ps1
+```
 
 ## Notes
 

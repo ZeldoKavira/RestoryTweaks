@@ -1,0 +1,68 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write        # needed to publish the rolling release
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # BepInEx is freely redistributable, so CI fetches it rather than committing it.
+      - name: Fetch BepInEx
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.3/BepInEx_win_x64_5.4.23.3.zip'
+          Invoke-WebRequest -Uri $url -OutFile bepinex.zip -UseBasicParsing
+          Expand-Archive -Path bepinex.zip -DestinationPath bepinex -Force
+
+      # The game's assemblies can't be shipped, so the build uses the stripped reference copies
+      # in refs/Managed (regenerate with refs/update-refs.ps1). They carry metadata only.
+      - name: Build
+        shell: pwsh
+        run: |
+          dotnet build RestoryTweaks/RestoryTweaks.csproj -c Release --nologo `
+            -p:ManagedDir="$PWD/refs/Managed" `
+            -p:BepInExCore="$PWD/bepinex/BepInEx/core"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RestoryTweaks
+          path: RestoryTweaks/bin/Release/RestoryTweaks.dll
+
+      # Every push to main refreshes the "latest" release, so the one-line installer always
+      # fetches the current build. The installer resolves the asset through the releases API,
+      # so the tag name never has to be edited anywhere.
+      - name: Publish latest release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $sha = "${{ github.sha }}".Substring(0,7)
+          # Recreate the rolling release so its asset and description stay in step.
+          gh release delete latest --yes --cleanup-tag 2>$null
+          gh release create latest RestoryTweaks/bin/Release/RestoryTweaks.dll `
+            --title "Latest build ($sha)" `
+            --notes @"
+          Automatic build of ${{ github.sha }}.
+
+          **Steam Deck / Linux**
+          ``````
+          curl -sSL https://raw.githubusercontent.com/${{ github.repository }}/main/install-steamdeck.sh | bash
+          ``````
+
+          **Windows** - unzip BepInEx 5 (x64) into the game folder and drop RestoryTweaks.dll into BepInEx/plugins/.
+          "@
