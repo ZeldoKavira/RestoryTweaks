@@ -2,9 +2,11 @@ using System;
 using System.Reflection;
 using BepInEx.Configuration;
 using HarmonyLib;
+using Restory.Data.Equipment;
 using Restory.Gameplay.Disassemble.StateMachine;
 using Restory.Gameplay.Elements;
 using Restory.Gameplay.Equipment;
+using Restory.Gameplay.Soldering;
 
 namespace RestoryTweaks
 {
@@ -12,9 +14,15 @@ namespace RestoryTweaks
     {
         public static ConfigEntry<bool> Enabled;
         public static ConfigEntry<bool> OnlyForDeviceParts;
+        public static ConfigEntry<bool> SelectTool;
 
         public static void Init(ConfigFile cfg)
         {
+            SelectTool = cfg.Bind("AutoOpenCleaner", "SelectTool", true,
+                "Equip the tool the part actually needs: a brush while there's dirt or soot to "
+                + "clear, the soldering iron once it's clean enough to resolder. Applies whenever "
+                + "the cleaning window opens, however you got there.");
+
             Enabled = cfg.Bind("AutoOpenCleaner", "Enabled", true,
                 "Picking up a part that needs cleaning or soldering opens the cleaning window "
                 + "straight away, instead of you having to drag it onto the cleaner.");
@@ -132,6 +140,136 @@ namespace RestoryTweaks
         {
             try { return element != null && element.Info != null ? element.Info.name : "a part"; }
             catch { return "a part"; }
+        }
+    }
+
+    // Picking the tool the part needs.
+    //
+    // The choice isn't ours to make: SolderingService.Init already applies the game's rule - any
+    // sooty solder point puts it in cleaning mode, and only a fully cleaned element goes straight
+    // to soldering mode. So we read InSolderingMode rather than re-deriving "is it dirty", and the
+    // brush-before-iron ordering falls out for free.
+    internal static class CleaningTools
+    {
+        private static CleaningToolSelectionService _service;
+        private static FieldInfo _availableToolsField;
+        private static bool _warnedNoIron;
+
+        private static CleaningToolSelectionService Service
+        {
+            get
+            {
+                if (_service == null) _service = UnityEngine.Object.FindObjectOfType<CleaningToolSelectionService>();
+                return _service;
+            }
+        }
+
+        private static AvailableToolsTrackingService Tracking(CleaningToolSelectionService service)
+        {
+            // Read the service's own reference rather than searching the scene, so we can't end up
+            // consulting a different tracker than the one it validates selections against.
+            if (_availableToolsField == null)
+                _availableToolsField = typeof(CleaningToolSelectionService)
+                    .GetField("availableTools", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            var tracking = _availableToolsField != null
+                ? _availableToolsField.GetValue(service) as AvailableToolsTrackingService
+                : null;
+
+            return tracking != null ? tracking : UnityEngine.Object.FindObjectOfType<AvailableToolsTrackingService>();
+        }
+
+        public static void SelectFor(bool soldering)
+        {
+            try
+            {
+                if (!AutoOpenCleanerConfig.SelectTool.Value) return;
+                var service = Service;
+                if (service == null) return;
+
+                if (soldering) SelectSoldering(service);
+                else SelectBrush(service);
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoOpenCleaner] tool switch: {e.Message}"); }
+        }
+
+        private static void SelectBrush(CleaningToolSelectionService service)
+        {
+            // Any brush will do the job, so leave a deliberate choice of a better one alone.
+            if (service.CurrentlySelectedTool is CleaningToolInfo) return;
+
+            if (!service.TryToSelectDefaultTool())
+                Plugin.Log.LogInfo("[AutoOpenCleaner] No cleaning tool available to select.");
+        }
+
+        private static void SelectSoldering(CleaningToolSelectionService service)
+        {
+            if (service.CurrentlySelectedTool is SolderingToolInfo) return;
+
+            var tracking = Tracking(service);
+            if (tracking != null)
+                foreach (var tool in tracking.AvailableTools)
+                    if (tool is SolderingToolInfo iron && service.TryToSelectTool(iron))
+                    {
+                        _warnedNoIron = false;
+                        return;
+                    }
+
+            // Not an error: you can reach a scorched board before owning an iron. Say it once
+            // rather than every time the panel opens.
+            if (_warnedNoIron) return;
+            _warnedNoIron = true;
+            Plugin.Log.LogInfo("[AutoOpenCleaner] This part needs soldering, but no soldering iron is available.");
+        }
+    }
+
+    // Opening the cleaner: equip whatever the part needs first.
+    [HarmonyPatch(typeof(CleaningDisassembleState), "Enter", new Type[] { typeof(ElementBase) })]
+    public static class Patch_SelectToolOnCleanerOpen
+    {
+        private static FieldInfo _solderingService;
+
+        // Runs after Enter, which matters twice over: InitSoldering has decided the mode by then,
+        // and the state has already subscribed to OnToolSwitched - so our switch reaches
+        // ElementCleaner.SetCleaningTool through the game's own handler.
+        private static void Postfix(CleaningDisassembleState __instance)
+        {
+            try
+            {
+                if (_solderingService == null)
+                {
+                    _solderingService = typeof(CleaningDisassembleState)
+                        .GetField("solderingService", BindingFlags.Instance | BindingFlags.NonPublic);
+                    if (_solderingService == null)
+                    {
+                        Plugin.Log.LogWarning("[AutoOpenCleaner] Couldn't read the soldering state; "
+                                              + "leaving tool selection alone.");
+                        return;
+                    }
+                }
+
+                var soldering = _solderingService.GetValue(__instance) as SolderingService;
+                CleaningTools.SelectFor(soldering != null && soldering.IsActive && soldering.InSolderingMode);
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoOpenCleaner] {e.Message}"); }
+        }
+    }
+
+    // Brushing the soot off flips the session into soldering mode partway through, so swap to the
+    // iron at that moment too - otherwise the tool would only ever be right at the start.
+    [HarmonyPatch(typeof(SolderingService), "SwitchFromCleaningToSolderingMode")]
+    public static class Patch_SwapToIronWhenSootCleared
+    {
+        private static void Postfix(SolderingService __instance)
+        {
+            // The method bails out early when it's already soldering or has lost its target; only
+            // act on a switch that really happened.
+            try
+            {
+                if (__instance == null || !__instance.InSolderingMode) return;
+                CleaningTools.SelectFor(soldering: true);
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoOpenCleaner] {e.Message}"); }
         }
     }
 }

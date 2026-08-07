@@ -12,7 +12,9 @@ your basket aside and restores it afterwards, so only the part you clicked is pu
 parts are moved; palettes, sticker packs and devices are left alone.
 
 **Cleaner opens on pickup** — pick up a part that needs cleaning or soldering and the cleaning
-window opens on it straight away, with no drag onto the cleaner.
+window opens on it straight away, with no drag onto the cleaner. The right tool is equipped for you:
+a brush while there's dirt or soot to clear, and the soldering iron the moment the board is clean
+enough to resolder.
 
 **Auto-assemble** — once every part is identified, cleaned and undamaged, the device is put back
 together: parts, screws and multi-slot battery rows, paced so you can watch it happen. Parts still
@@ -27,7 +29,7 @@ bolted in count as unexamined, so it waits until you've actually been through th
 | `OrderParts` | `BuyImmediately`, `QuantityPerDoubleClick`, `OnlyMissingParts` |
 | `Delivery` | `PartsStraightToPartsBox`, `ShowNotification` |
 | `AutoAssemble` | `RequireEveryPartReady`, `DelayBetweenPartsMs` (750), `DelayBetweenScrewsMs` (200), `AssembleNowKey` (F6) |
-| `AutoOpenCleaner` | `Enabled`, `OnlyForDeviceParts` |
+| `AutoOpenCleaner` | `Enabled`, `SelectTool`, `OnlyForDeviceParts` |
 
 ## Installing
 
