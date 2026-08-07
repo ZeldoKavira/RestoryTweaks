@@ -398,15 +398,34 @@ namespace RestoryTweaks
         private int _lastStuckAt;
         private bool _saidStuck;
 
-        // Cheap description of how far assembled the device is, so a fruitless attempt isn't
-        // repeated until something actually changes.
-        private static int Fingerprint(Device device)
+        // Cheap description of the situation, so a fruitless attempt isn't repeated until something
+        // actually changes.
+        //
+        // This has to cover the parts available as well as the device itself. Taking a missing part
+        // out of the parts box changes nothing about the sockets, yet it's exactly the event that
+        // should un-stick a pass that stalled for want of that part - and hashing sockets alone
+        // meant the retry never happened. Readiness is folded in too, so identifying or cleaning a
+        // part that's already on the bench counts as a change.
+        private static int Fingerprint(Device device, List<ElementBase> loose)
         {
             int n = 17;
             try
             {
                 foreach (var socket in device.ElementSockets)
                     n = n * 31 + (socket != null && socket.NestedElement != null ? 1 : 0);
+
+                if (loose != null)
+                {
+                    // Summed rather than sequenced: the scan order of loose parts isn't stable, and
+                    // a reordering isn't a change worth retrying for.
+                    int parts = 0;
+                    foreach (var el in loose)
+                    {
+                        if (el == null) continue;
+                        parts += el.GetInstanceID() * (AutoAssemble.IsReady(el) ? 2 : 1);
+                    }
+                    n = n * 31 + parts;
+                }
             }
             catch { }
             return n;
@@ -428,15 +447,15 @@ namespace RestoryTweaks
                 if (!AutoAssembleConfig.On || Time.unscaledTime < _nextCheck) return;
                 _nextCheck = Time.unscaledTime + 1f;      // a device doesn't finish mid-frame
 
-                if (!AutoAssemble.ReadyToAssemble(out var dev, out _))
+                if (!AutoAssemble.ReadyToAssemble(out var dev, out var available))
                 {
                     ExplainIdle();
                     return;
                 }
 
-                // If a previous pass on this exact device state achieved nothing, don't keep
-                // retrying it - wait until the device changes.
-                int fingerprint = Fingerprint(dev);
+                // If a previous pass on this exact situation achieved nothing, don't keep retrying
+                // it - wait until the device or the available parts change.
+                int fingerprint = Fingerprint(dev, available);
                 if (fingerprint == _lastStuckAt)
                 {
                     // Don't retry a state already failed on - but say so ONCE, because otherwise
@@ -689,7 +708,10 @@ namespace RestoryTweaks
                 DumpSockets(device);
             }
 
-            if (status != Device.AssembleStatus.Assembled) _lastStuckAt = Fingerprint(device);
+            // Rescan rather than reusing the local list: fitting consumes entries from it, so it no
+            // longer describes what's lying on the bench by the time we get here.
+            if (status != Device.AssembleStatus.Assembled)
+                _lastStuckAt = Fingerprint(device, AutoAssemble.LooseParts(device));
         }
     }
 }
