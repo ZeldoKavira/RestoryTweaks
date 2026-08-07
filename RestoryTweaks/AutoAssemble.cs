@@ -5,6 +5,7 @@ using BepInEx.Configuration;
 using Restory.Data.Elements;
 using Restory.Data.Elements.Condition;
 using Restory.Gameplay.Devices;
+using Restory.Gameplay.Disassemble.StateMachine;
 using Restory.Gameplay.Elements;
 using Restory.Gameplay.Workplace;
 using UnityEngine;
@@ -257,6 +258,43 @@ namespace RestoryTweaks
         public static bool DeviceIsOpen(Device device)
         {
             try { return device != null && device.IsActivated; }
+            catch { return false; }
+        }
+
+        private static DisassembleStateMachine _states;
+
+        private static DisassembleStateMachine States
+        {
+            get
+            {
+                if (_states == null) _states = UnityEngine.Object.FindObjectOfType<DisassembleStateMachine>();
+                return _states;
+            }
+        }
+
+        // Still at the bench, with this device open in front of you.
+        //
+        // Checked between every step, because assembly is paced over seconds and walking away
+        // partway through shouldn't leave it quietly screwing the case shut behind you.
+        //
+        // The state machine is what notices first: the camera merely starting to swing away from
+        // the disassemble view enters DisabledDisassembleState immediately, whereas Device
+        // .IsActivated stays true until the exit animation finishes - easily long enough to fit
+        // several more parts after you've left.
+        public static bool StillOnRepairPad(Device device)
+        {
+            try
+            {
+                if (!DeviceIsOpen(device)) return false;
+
+                // A different job on the bench is not this job.
+                if (!ReferenceEquals(PlacedDevice(), device)) return false;
+
+                var states = States;
+                if (states == null) return true;   // can't tell; don't interrupt work that's fine
+
+                return !(states.ActiveState is DisabledDisassembleState);
+            }
             catch { return false; }
         }
 
@@ -614,6 +652,14 @@ namespace RestoryTweaks
             var device = AutoAssemble.PlacedDevice();
             if (device == null) { Plugin.Log.LogInfo("[AutoAssemble] No device on the bench."); yield break; }
 
+            // Also guards the F6 path, which doesn't come through ReadyToAssemble. Off the pad the
+            // screw projections don't exist, so there'd be nothing to work with anyway.
+            if (!AutoAssemble.StillOnRepairPad(device))
+            {
+                Plugin.Log.LogInfo("[AutoAssemble] Not at the repair pad; not starting.");
+                yield break;
+            }
+
             var loose = AutoAssemble.LooseParts(device);
             if (!force && AutoAssembleConfig.RequireAllReady.Value)
             {
@@ -630,9 +676,10 @@ namespace RestoryTweaks
             int fitted = 0, screws = 0;
             string screwProblem = null;
             bool progress = true;
+            bool leftPad = false;
 
             // Repeat passes: fitting a part unblocks sockets that weren't available before.
-            while (progress)
+            while (progress && !leftPad)
             {
                 progress = false;
 
@@ -683,10 +730,23 @@ namespace RestoryTweaks
                     float ms = small ? AutoAssembleConfig.ScrewDelayMs.Value : AutoAssembleConfig.PartDelayMs.Value;
                     if (ms > 0f) yield return new WaitForSeconds(ms / 1000f);
 
+                    // Re-check after every wait, not just at the start: this is the window in which
+                    // you can leave, and stopping here means what's already fitted stays fitted.
+                    if (!AutoAssemble.StillOnRepairPad(device)) leftPad = true;
+
                     // The socket list is being walked while the device changes underneath it, so
                     // restart the sweep rather than continuing over stale availability.
                     break;
                 }
+            }
+
+            if (leftPad)
+            {
+                // Deliberately no stuck fingerprint: nothing failed here, it was interrupted. Come
+                // back to the bench and it picks up where it left off.
+                Plugin.Log.LogInfo($"[AutoAssemble] Stopped - you left the repair pad. "
+                                   + $"Fitted {fitted} part(s) ({screws} screw(s)) before stopping.");
+                yield break;
             }
 
             var status = device.CheckAssembleStatus();

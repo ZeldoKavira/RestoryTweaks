@@ -18,7 +18,8 @@ enough to resolder.
 
 **Auto-assemble** — once every part is identified, cleaned and undamaged, the device is put back
 together: parts, screws and multi-slot battery rows, paced so you can watch it happen. Parts still
-bolted in count as unexamined, so it waits until you've actually been through the whole device.
+bolted in count as unexamined, so it waits until you've actually been through the whole device, and
+it stops the moment you leave the repair pad rather than finishing up behind your back.
 
 ## Settings
 
