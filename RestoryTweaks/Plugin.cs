@@ -25,6 +25,7 @@ namespace RestoryTweaks
             OrderPartConfig.Init(Config);
             DeliveryToPartsBoxConfig.Init(Config);
             AutoAssembleConfig.Init(Config);
+            AutoOpenCleanerConfig.Init(Config);
 
             ApplyPatches();
 

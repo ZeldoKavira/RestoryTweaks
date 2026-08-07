@@ -11,8 +11,12 @@ your basket aside and restores it afterwards, so only the part you clicked is pu
 **Delivered parts go straight to the parts box** — no carrying them over from the delivery box. Only
 parts are moved; palettes, sticker packs and devices are left alone.
 
-**Auto-assemble** — once every loose part is identified, cleaned and undamaged, the device is put
-back together: parts, screws and multi-slot battery rows, paced so you can watch it happen.
+**Cleaner opens on pickup** — pick up a part that needs cleaning or soldering and the cleaning
+window opens on it straight away, with no drag onto the cleaner.
+
+**Auto-assemble** — once every part is identified, cleaned and undamaged, the device is put back
+together: parts, screws and multi-slot battery rows, paced so you can watch it happen. Parts still
+bolted in count as unexamined, so it waits until you've actually been through the whole device.
 
 ## Settings
 
@@ -23,6 +27,7 @@ back together: parts, screws and multi-slot battery rows, paced so you can watch
 | `OrderParts` | `BuyImmediately`, `QuantityPerDoubleClick`, `OnlyMissingParts` |
 | `Delivery` | `PartsStraightToPartsBox`, `ShowNotification` |
 | `AutoAssemble` | `RequireEveryPartReady`, `DelayBetweenPartsMs` (750), `DelayBetweenScrewsMs` (200), `AssembleNowKey` (F6) |
+| `AutoOpenCleaner` | `Enabled`, `OnlyForDeviceParts` |
 
 ## Installing
 
