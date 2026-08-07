@@ -1,0 +1,11 @@
+# Build output
+bin/
+obj/
+
+# Local save backups - never publish someone's saves
+save-backups/
+
+# Editor/OS noise
+.vs/
+*.user
+Thumbs.db
