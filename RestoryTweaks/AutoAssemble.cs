@@ -160,6 +160,22 @@ namespace RestoryTweaks
             return loose;
         }
 
+        // Every part of this device, installed or loose, without duplicates.
+        public static List<ElementBase> EveryPart(Device device)
+        {
+            var all = LooseParts(device);
+            try
+            {
+                foreach (var socket in device.ElementSockets)
+                {
+                    var el = socket != null ? socket.NestedElement : null;
+                    if (el != null && !all.Contains(el)) all.Add(el);
+                }
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoAssemble] part scan failed: {e.Message}"); }
+            return all;
+        }
+
         // The first part of this device that isn't finished yet, looking at parts still installed as
         // well as loose ones.
         //

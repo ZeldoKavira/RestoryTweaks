@@ -1,9 +1,12 @@
 using System;
 using System.Reflection;
+using Restory.Data.Elements.Condition;
 using Restory.Gameplay.Devices;
 using Restory.Gameplay.Disassemble.StateMachine;
 using Restory.Gameplay.Elements;
+using Restory.Gameplay.Equipment;
 using Restory.Gameplay.Equipment.Ultrasonic;
+using Restory.Gameplay.Equipment.Ultrasonic.States;
 
 namespace RestoryTweaks
 {
@@ -76,6 +79,7 @@ namespace RestoryTweaks
                 }
 
                 LeaveDragState(drag);
+                MaybeStart(service, bath);
                 return true;
             }
             catch (Exception e)
@@ -83,6 +87,88 @@ namespace RestoryTweaks
                 Plugin.Log.LogError($"[AutoOpenCleaner] ultrasonic: {e.Message}");
                 return false;
             }
+        }
+
+        // Run a cycle once there's nothing more worth waiting for: the basket is full, or nothing
+        // left on this device would go in the bath anyway.
+        private static void MaybeStart(UltrasonicService service, SonicBath bath)
+        {
+            try
+            {
+                if (!AutoOpenCleanerConfig.AutoStartUltrasonic.Value) return;
+
+                string why;
+                if (bath.IsFull) why = "the basket is full";
+                else if (!MorePartsForTheBath(service, bath)) why = "nothing else needs cleaning";
+                else return;
+
+                if (!Start(service, bath)) return;
+                Plugin.Log.LogInfo($"[AutoOpenCleaner] Started the ultrasonic bath - {why}.");
+                Toast.Show("Ultrasonic bath started");
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoOpenCleaner] auto-start: {e.Message}"); }
+        }
+
+        // Exactly what IdleUltrasonicState does when you press the button, in the same order: shut
+        // the cover on the contents, start the countdown, and only then switch state - entering the
+        // launched state without a running timer is an error case the game logs and backs out of.
+        //
+        // TurnOn first, so the switch and lamp match. The button's own tween completing afterwards
+        // is harmless: the launched state only reacts to a click that turns the button OFF.
+        private static bool Start(UltrasonicService service, SonicBath bath)
+        {
+            var button = bath.ToggleButton;
+            var timer = bath.Timer;
+            var cover = bath.Cover;
+            if (button == null || timer == null || cover == null) return false;
+
+            if (timer.IsCountdown) return false;          // already running
+
+            bool wasOn = button.IsOn;
+            if (!wasOn) button.TurnOn();
+
+            if (cover.IsOpen)
+            {
+                bath.FreezeInsertedElements();
+                cover.Close();
+            }
+
+            if (!timer.TryStartCountdown(bath.CleaningDuration))
+            {
+                // Don't leave the switch showing "on" over a bath that isn't running.
+                if (!wasOn) button.TurnOff();
+                return false;
+            }
+
+            var states = StateMachine(service);
+            if (states != null) states.EnterLaunchedState();
+            return true;
+        }
+
+        // Anything left on the device that would end up in this bath?
+        //
+        // Parts still bolted in count: you haven't taken them out yet, and running a cycle now
+        // would mean waiting through a second one for them. Parts that need soldering don't count -
+        // those go to the brush window, so waiting for them would mean never starting.
+        private static bool MorePartsForTheBath(UltrasonicService service, SonicBath bath)
+        {
+            var device = AutoAssemble.PlacedDevice();
+            if (device == null) return false;
+
+            var cleaner = Cleaner(service);
+
+            foreach (var element in AutoAssemble.EveryPart(device))
+            {
+                if (element == null || Holds(element)) continue;
+
+                var data = element.ConditionHandler != null ? element.ConditionHandler.ElementData : null;
+                if (data == null || !(data.Condition is DirtyElementCondition)) continue;
+
+                if (cleaner != null && cleaner.IsElementNeedsSoldering(element, out _, out _)) continue;
+
+                return true;
+            }
+            return false;
         }
 
         // Is this part currently sitting in the bath?
@@ -110,6 +196,28 @@ namespace RestoryTweaks
                 return false;
             }
             catch { return false; }
+        }
+
+        private static FieldInfo _stateMachineOfService;
+        private static FieldInfo _cleanerField;
+
+        private static UltrasonicStateMachine StateMachine(UltrasonicService service)
+        {
+            if (_stateMachineOfService == null)
+                _stateMachineOfService = typeof(UltrasonicService).GetField("ultrasonicStateMachine",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            return _stateMachineOfService != null
+                ? _stateMachineOfService.GetValue(service) as UltrasonicStateMachine : null;
+        }
+
+        private static ElementCleaner Cleaner(UltrasonicService service)
+        {
+            if (_cleanerField == null)
+                _cleanerField = typeof(UltrasonicService).GetField("elementCleaner",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            return _cleanerField != null ? _cleanerField.GetValue(service) as ElementCleaner : null;
         }
 
         private static bool CanInsert(UltrasonicService service)
