@@ -17,9 +17,14 @@ namespace RestoryTweaks
         public static ConfigEntry<bool> SelectTool;
         public static ConfigEntry<bool> PreferUltrasonicBath;
         public static ConfigEntry<bool> AutoStartUltrasonic;
+        public static ConfigEntry<bool> AutoEmptyUltrasonic;
 
         public static void Init(ConfigFile cfg)
         {
+            AutoEmptyUltrasonic = cfg.Bind("AutoOpenCleaner", "AutoEmptyUltrasonic", true,
+                "When a cycle finishes, take the clean parts out of the bath and lay them back on "
+                + "the bench, instead of fishing them out one at a time.");
+
             AutoStartUltrasonic = cfg.Bind("AutoOpenCleaner", "AutoStartUltrasonic", true,
                 "Run the bath as soon as there's no reason to keep loading it - the basket is full, "
                 + "or nothing left on the device would go in it. Parts needing solder don't count, "

@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
+using UnityEngine;
+using HarmonyLib;
 using Restory.Data.Elements.Condition;
 using Restory.Gameplay.Devices;
 using Restory.Gameplay.Disassemble.StateMachine;
@@ -171,6 +174,92 @@ namespace RestoryTweaks
             return false;
         }
 
+        // Take everything out when the cycle finishes and put it back on the bench.
+        //
+        // Retrieval is the game's own TryRetrieveElementFromSonicBath, which restores the part's
+        // original scale, updates the occupancy indicator and registers it on the work surface. What
+        // it doesn't do is decide where the part goes - normally you're dragging it, so your cursor
+        // answers that. Here nothing is, so each part is run through the same placement finder the
+        // game uses when dropping items out of storage, or it would be left hovering in the basket.
+        public static void EmptyAfterCleaning()
+        {
+            try
+            {
+                if (!AutoOpenCleanerConfig.AutoEmptyUltrasonic.Value) return;
+
+                var service = Service;
+                if (service == null) return;
+
+                var bath = Bath(service);
+                if (bath == null || bath.InsertedElements == null) return;
+
+                // Snapshot first: retrieving mutates the collection being iterated.
+                var contents = new List<ElementBase>();
+                foreach (var pair in bath.InsertedElements) contents.Add(pair.Key);
+                if (contents.Count == 0) return;
+
+                bath.TryPull();          // open the drawer, as you would before reaching in
+
+                var placement = Placement();
+                int taken = 0;
+
+                foreach (var element in contents)
+                {
+                    if (element == null) continue;
+                    if (!service.TryRetrieveElementFromSonicBath(element)) continue;
+                    PlaceOnBench(placement, element);
+                    taken++;
+                }
+
+                if (taken == 0) return;
+
+                Plugin.Log.LogInfo($"[AutoOpenCleaner] Took {taken} clean part(s) out of the ultrasonic bath.");
+                Toast.Show(taken == 1 ? "1 part out of the bath" : $"{taken} parts out of the bath");
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoOpenCleaner] emptying the bath: {e.Message}"); }
+        }
+
+        private static void PlaceOnBench(ElementPlacementController placement, ElementBase element)
+        {
+            try
+            {
+                // Frozen and rescaled while it soaked; put it back to behaving like a loose part.
+                if (element.BehaviorSwitcher != null) element.BehaviorSwitcher.SwitchToPlacedBehavior();
+
+                if (placement == null) return;   // already on the surface, just not repositioned
+
+                placement.SetTargetElement(element);
+                if (placement.TryFindAvailablePlacementPosition(Quaternion.identity))
+                    placement.SetPlacementPosition();
+                placement.Clear();
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoOpenCleaner] placing a part: {e.Message}"); }
+        }
+
+        private static FieldInfo _placementField;
+
+        // The placement controller isn't a component, so it can't be searched for. The dragging
+        // state holds the same instance, and the state machine hands out its states publicly.
+        private static ElementPlacementController Placement()
+        {
+            try
+            {
+                var states = UnityEngine.Object.FindObjectOfType<DisassembleStateMachine>();
+                if (states == null) return null;
+
+                var drag = states.GetState<DraggingDisassembleState>();
+                if (drag == null) return null;
+
+                if (_placementField == null)
+                    _placementField = typeof(DraggingDisassembleState).GetField("elementPlacementController",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+
+                return _placementField != null
+                    ? _placementField.GetValue(drag) as ElementPlacementController : null;
+            }
+            catch { return null; }
+        }
+
         // Is this part currently sitting in the bath?
         //
         // Assembly has to leave those alone. A part in the basket is still an ordinary element in
@@ -260,6 +349,18 @@ namespace RestoryTweaks
             }
 
             states.Enter<DetectionDisassembleState>();
+        }
+    }
+
+    // The end of a cycle. Patched here rather than on a timer: this is the game's own "the
+    // countdown finished" handler, and it has already made the contents clean and returned the
+    // machine to idle by the time the postfix runs, so the parts coming out really are done.
+    [HarmonyPatch(typeof(LaunchedUltrasonicState), "ResolveTimerCountdownComplete")]
+    public static class Patch_EmptyBathWhenDone
+    {
+        private static void Postfix()
+        {
+            UltrasonicBath.EmptyAfterCleaning();
         }
     }
 }

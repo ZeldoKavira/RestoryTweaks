@@ -875,6 +875,10 @@ namespace RestoryTweaks
             }
 
             var status = device.CheckAssembleStatus();
+
+            if (fitted > 0 && status == Device.AssembleStatus.Assembled)
+                Competition.NotifyAssembled(device);
+
             if (fitted > 0)
                 Plugin.Log.LogInfo($"[AutoAssemble] Fitted {fitted} part(s) ({screws} screw(s)). " +
                                    $"Device is now: {status}.");
