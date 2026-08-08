@@ -352,6 +352,39 @@ namespace RestoryTweaks
         }
     }
 
+    // How long a cycle takes.
+    //
+    // The countdown runs on the game calendar, not on real time, so the duration has to be in game
+    // seconds - the game converts for us: CleaningDuration is the tool's own figure multiplied by
+    // the time step, and TimeSystem.Tick advances the calendar by exactly that many game seconds per
+    // real second. In other words the tool's number is already in real seconds, and the multiplier
+    // is the conversion.
+    //
+    // Rather than reach for the time settings, the scale is recovered by dividing the game's answer
+    // by the tool's figure. That way this keeps working off whatever the game actually used, and if
+    // the arithmetic ever stops making sense the override simply doesn't apply.
+    [HarmonyPatch(typeof(SonicBath), "get_CleaningDuration")]
+    public static class Patch_UltrasonicDuration
+    {
+        private static void Postfix(SonicBath __instance, ref TimeSpan __result)
+        {
+            try
+            {
+                float seconds = AutoOpenCleanerConfig.UltrasonicSeconds.Value;
+                if (seconds <= 0f) return;                       // keep the game's own duration
+
+                var tool = __instance.ActiveTool;
+                if (tool == null || tool.CleaningDuration <= 0f) return;
+
+                double gameSecondsPerRealSecond = __result.TotalSeconds / tool.CleaningDuration;
+                if (gameSecondsPerRealSecond <= 0d) return;
+
+                __result = TimeSpan.FromSeconds(seconds * gameSecondsPerRealSecond);
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[AutoOpenCleaner] cycle length: {e.Message}"); }
+        }
+    }
+
     // The end of a cycle. Patched here rather than on a timer: this is the game's own "the
     // countdown finished" handler, and it has already made the contents clean and returned the
     // machine to idle by the time the postfix runs, so the parts coming out really are done.

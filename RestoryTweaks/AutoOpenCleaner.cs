@@ -18,9 +18,16 @@ namespace RestoryTweaks
         public static ConfigEntry<bool> PreferUltrasonicBath;
         public static ConfigEntry<bool> AutoStartUltrasonic;
         public static ConfigEntry<bool> AutoEmptyUltrasonic;
+        public static ConfigEntry<float> UltrasonicSeconds;
 
         public static void Init(ConfigFile cfg)
         {
+            UltrasonicSeconds = cfg.Bind("AutoOpenCleaner", "UltrasonicSeconds", 2f,
+                new ConfigDescription(
+                    "How long an ultrasonic cycle takes, in real seconds. Set to 0 to leave the "
+                    + "game's own duration alone.",
+                    new AcceptableValueRange<float>(0f, 600f)));
+
             AutoEmptyUltrasonic = cfg.Bind("AutoOpenCleaner", "AutoEmptyUltrasonic", true,
                 "When a cycle finishes, take the clean parts out of the bath and lay them back on "
                 + "the bench, instead of fishing them out one at a time.");
