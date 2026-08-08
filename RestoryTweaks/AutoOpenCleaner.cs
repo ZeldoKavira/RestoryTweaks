@@ -15,9 +15,15 @@ namespace RestoryTweaks
         public static ConfigEntry<bool> Enabled;
         public static ConfigEntry<bool> OnlyForDeviceParts;
         public static ConfigEntry<bool> SelectTool;
+        public static ConfigEntry<bool> PreferUltrasonicBath;
 
         public static void Init(ConfigFile cfg)
         {
+            PreferUltrasonicBath = cfg.Bind("AutoOpenCleaner", "PreferUltrasonicBath", true,
+                "If you own an ultrasonic bath, drop parts that only need cleaning straight into "
+                + "it instead of opening the brush window. Parts that need soldering still go to "
+                + "the brush window, since the bath can't resolder anything.");
+
             SelectTool = cfg.Bind("AutoOpenCleaner", "SelectTool", true,
                 "Equip the tool the part actually needs: a brush while there's dirt or soot to "
                 + "clear, the soldering iron once it's clean enough to resolder. Applies whenever "
@@ -100,6 +106,16 @@ namespace RestoryTweaks
 
                 if (AutoOpenCleanerConfig.OnlyForDeviceParts.Value && !BelongsToPlacedDevice(selectedElement))
                     return;
+
+                // The bath removes dirt and soot but cannot resolder, so anything with solder points
+                // to redo still needs the brush window and its iron. SolderPointsCount is only
+                // non-zero when the game's own IsElementNeedsSoldering said so.
+                if (work.SolderPointsCount == 0
+                    && UltrasonicBath.TryInsert(__instance, selectedElement))
+                {
+                    Plugin.Log.LogInfo($"[AutoOpenCleaner] Put {Name(selectedElement)} in the ultrasonic bath.");
+                    return;
+                }
 
                 _isOverCleaner.SetValue(__instance, true);
 

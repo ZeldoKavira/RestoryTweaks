@@ -16,6 +16,11 @@ window opens on it straight away, with no drag onto the cleaner. The right tool 
 a brush while there's dirt or soot to clear, and the soldering iron the moment the board is clean
 enough to resolder.
 
+If you own an **ultrasonic bath**, parts that only need cleaning go straight into it instead — the
+drawer opens and the part drops in, ready for you to run a cycle. Parts needing solder still open
+the brush window, since the bath can't resolder. Auto-assemble leaves anything in the basket alone
+and waits for it rather than fitting it half-cleaned.
+
 **Auto-assemble** — once every part is identified, cleaned and undamaged, the device is put back
 together: parts, screws and multi-slot battery rows, paced so you can watch it happen. Parts still
 bolted in count as unexamined, so it waits until you've actually been through the whole device, and
@@ -36,7 +41,7 @@ device that can't be finished any other way; needs Ctrl held so it can't be hit 
 | `OrderParts` | `BuyImmediately`, `QuantityPerDoubleClick`, `OnlyMissingParts` |
 | `Delivery` | `PartsStraightToPartsBox`, `ShowNotification` |
 | `AutoAssemble` | `RequireEveryPartReady`, `DelayBetweenPartsMs` (750), `DelayBetweenScrewsMs` (200), `AssembleNowKey` (F6), `ToggleKey` (F7), `ForceRepairKey` (Ctrl+F8) |
-| `AutoOpenCleaner` | `Enabled`, `SelectTool`, `OnlyForDeviceParts` |
+| `AutoOpenCleaner` | `Enabled`, `SelectTool`, `PreferUltrasonicBath`, `OnlyForDeviceParts` |
 
 ## Installing
 

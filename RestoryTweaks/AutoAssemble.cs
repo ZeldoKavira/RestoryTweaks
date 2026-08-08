@@ -112,6 +112,13 @@ namespace RestoryTweaks
                     ? element.ConditionHandler.ElementData : null;
                 if (data == null) return false;
 
+                // A part in the ultrasonic bath is off limits, even once it comes out clean.
+                // Reported as "not ready" rather than filtered out of the loose list, because the
+                // difference matters: filtering would let assembly run to completion around it and
+                // screw the case shut over an empty socket. Answering "not ready" makes it wait,
+                // and taking the part out of the bath is a change that triggers a fresh attempt.
+                if (UltrasonicBath.Holds(element)) return false;
+
                 if (data.Info != null && data.Info.Category == ElementCategory.Small)
                     return !(data.Condition is DamagedElementCondition)
                         && !(data.Condition is BurntElementCondition);
