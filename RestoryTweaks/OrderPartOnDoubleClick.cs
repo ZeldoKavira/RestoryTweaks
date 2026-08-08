@@ -225,14 +225,18 @@ namespace RestoryTweaks
                 {
                     Plugin.Log.LogInfo($"[OrderParts] Ordered {Describe(element)} x{qty} for {cost}.");
 
-                    // Use the game's own parts notification rather than inventing one, so the
-                    // feedback matches what you see when parts arrive normally.
-                    PartsBox.Announce(new List<HeldElement> {
-                        new HeldElement(new ElementData { Info = listing.Element }, qty) });
+                    // The banner, not the parts popup: that popup means "these have arrived", and
+                    // showing it at the moment of ordering claimed something that hadn't happened -
+                    // the parts are still in delivery at this point.
+                    string shown = Toast.NameOf(element);
+                    Toast.Show(qty > 1 ? $"Ordered {qty}x {shown}" : $"Ordered {shown}");
                 }
                 else
+                {
                     Plugin.Log.LogInfo($"[OrderParts] Couldn't order {Describe(element)} - " +
                                        $"not enough money, or it's out of stock ({cost} needed).");
+                    Toast.Show($"Couldn't order {Toast.NameOf(element)}");
+                }
             }
             catch (Exception e) { Plugin.Log.LogError($"[OrderParts] order failed: {e.Message}"); }
             finally

@@ -1,4 +1,6 @@
 using System;
+using Restory.Data.Elements;
+using Restory.Data.Localization;
 using Restory.Gameplay.UserInterface;
 using UnityEngine;
 
@@ -31,6 +33,33 @@ namespace RestoryTweaks
                 }
                 return _dialogue;
             }
+        }
+
+        private static LocalizationSystem _localization;
+
+        // The readable name of a part, for messages that are shown rather than logged. An
+        // ElementInfo's asset name is fine in a log but reads as debris on screen
+        // ("PSP_1000_Screw - ElementInfo"), and the game already has the translated name.
+        public static string NameOf(ElementInfo element)
+        {
+            try
+            {
+                if (element == null) return "part";
+
+                if (_localization == null)
+                    _localization = UnityEngine.Object.FindObjectOfType<LocalizationSystem>();
+
+                if (_localization != null && !string.IsNullOrEmpty(element.NameLocalizationKey))
+                {
+                    string translated;
+                    if (_localization.TryGetTranslation(element.NameLocalizationKey, out translated)
+                        && !string.IsNullOrEmpty(translated))
+                        return translated;
+                }
+
+                return element.name;
+            }
+            catch { return "part"; }
         }
 
         public static void Show(string message)
