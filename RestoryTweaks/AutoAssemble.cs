@@ -98,14 +98,19 @@ namespace RestoryTweaks
             catch { return null; }
         }
 
-        // Good enough to go back into the device: perfect condition, not dirty, burnt or broken.
+        // Good enough to go back into the device.
         //
-        // Deliberately says nothing about whether you've examined the part. That's a separate
-        // question - see IsReady - and conflating the two broke competition mode: there you race to
-        // strip a pristine device and put it back, never inspecting anything, so every part failed
-        // the fit test and even the manual trigger could fit nothing at all.
+        // Being inspected is part of this, and not merely a formality: picking a part up is what
+        // marks it, so it's the only thing distinguishing the parts you took out of THIS device
+        // from identical spares lying around the workshop. Dropping the requirement made assembly
+        // install a spare and leave the original loose on the bench, which reads as parts being
+        // duplicated.
         //
-        // Screws are the exception to the condition test too: they're never cleaned, so demanding
+        // Competitions are the exception: there you race to strip a pristine device and put it
+        // back without inspecting anything, so the requirement would reject every part - and there
+        // are no stray spares in a competition for it to confuse them with.
+        //
+        // Screws are exempt from the condition test too: they're never cleaned, so demanding
         // Perfect rejected every one and left them in the bin as "spare parts" while the sockets
         // they block stayed unavailable.
         public static bool CanFit(ElementBase element)
@@ -127,16 +132,18 @@ namespace RestoryTweaks
                     return !(data.Condition is DamagedElementCondition)
                         && !(data.Condition is BurntElementCondition);
 
-                return data.Condition is PerfectElementCondition;
+                if (!(data.Condition is PerfectElementCondition)) return false;
+
+                return data.IsInspected || Competition.InProgress;
             }
             catch { return false; }
         }
 
         // Finished with: fit-worthy, and you've actually handled it.
         //
-        // Only used to decide whether to start assembling on its own - "have you been through the
-        // whole device yet". Picking a part up marks it inspected, so this is really asking whether
-        // anything is still untouched. Screws are exempt: they're never inspected at all.
+        // Only used to decide whether to start assembling unprompted - "have you been through the
+        // whole device yet". The competition waiver above is deliberately NOT honoured here, so
+        // competitions still never assemble themselves; F6 remains the way to finish one.
         public static bool IsReady(ElementBase element)
         {
             try
@@ -504,9 +511,8 @@ namespace RestoryTweaks
                 if (el == null) { loose.RemoveAt(i--); continue; }
                 if (!ReferenceEquals(el.Info, wanted)) continue;
 
-                // Never fit a dirty, burnt or broken part - putting one of those back into the
-                // device is never the intent. Whether you've inspected it is a different matter and
-                // deliberately not asked here; in competition mode nothing ever gets inspected.
+                // Never fit a part that isn't fit to go back in - dirty, burnt, broken, or one you
+                // haven't handled and so might not even belong to this device.
                 if (!CanFit(el)) continue;
 
                 loose.RemoveAt(i);

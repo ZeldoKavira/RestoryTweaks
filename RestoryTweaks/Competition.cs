@@ -34,6 +34,20 @@ namespace RestoryTweaks
             }
         }
 
+        // Is a competition running right now?
+        public static bool InProgress
+        {
+            get
+            {
+                try
+                {
+                    var mode = Mode;
+                    return mode != null && mode.IsInCompetition;
+                }
+                catch { return false; }
+            }
+        }
+
         public static void NotifyAssembled(Device device)
         {
             try
