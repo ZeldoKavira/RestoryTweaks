@@ -98,13 +98,17 @@ namespace RestoryTweaks
             catch { return null; }
         }
 
-        // Finished = identified and in perfect condition, rather than dirty, burnt or broken.
+        // Good enough to go back into the device: perfect condition, not dirty, burnt or broken.
         //
-        // Screws are the exception, and getting this wrong is what stalled assembly: they're never
-        // inspected and never cleaned, so demanding IsInspected + Perfect rejected every one. They
-        // then sat in the bin as "spare parts" while the sockets they block stayed unavailable -
-        // which is exactly what "0 sockets with no ready part, 13 blocked" was describing.
-        public static bool IsReady(ElementBase element)
+        // Deliberately says nothing about whether you've examined the part. That's a separate
+        // question - see IsReady - and conflating the two broke competition mode: there you race to
+        // strip a pristine device and put it back, never inspecting anything, so every part failed
+        // the fit test and even the manual trigger could fit nothing at all.
+        //
+        // Screws are the exception to the condition test too: they're never cleaned, so demanding
+        // Perfect rejected every one and left them in the bin as "spare parts" while the sockets
+        // they block stayed unavailable.
+        public static bool CanFit(ElementBase element)
         {
             try
             {
@@ -113,19 +117,41 @@ namespace RestoryTweaks
                 if (data == null) return false;
 
                 // A part in the ultrasonic bath is off limits, even once it comes out clean.
-                // Reported as "not ready" rather than filtered out of the loose list, because the
+                // Answered here rather than by filtering it out of the loose list, because the
                 // difference matters: filtering would let assembly run to completion around it and
-                // screw the case shut over an empty socket. Answering "not ready" makes it wait,
-                // and taking the part out of the bath is a change that triggers a fresh attempt.
+                // screw the case shut over an empty socket. Saying "no" makes it wait, and taking
+                // the part out of the bath is a change that triggers a fresh attempt.
                 if (UltrasonicBath.Holds(element)) return false;
 
-                if (data.Info != null && data.Info.Category == ElementCategory.Small)
+                if (IsScrew(data))
                     return !(data.Condition is DamagedElementCondition)
                         && !(data.Condition is BurntElementCondition);
 
-                return data.IsInspected && data.Condition is PerfectElementCondition;
+                return data.Condition is PerfectElementCondition;
             }
             catch { return false; }
+        }
+
+        // Finished with: fit-worthy, and you've actually handled it.
+        //
+        // Only used to decide whether to start assembling on its own - "have you been through the
+        // whole device yet". Picking a part up marks it inspected, so this is really asking whether
+        // anything is still untouched. Screws are exempt: they're never inspected at all.
+        public static bool IsReady(ElementBase element)
+        {
+            try
+            {
+                if (!CanFit(element)) return false;
+
+                var data = element.ConditionHandler.ElementData;
+                return IsScrew(data) || data.IsInspected;
+            }
+            catch { return false; }
+        }
+
+        private static bool IsScrew(ElementData data)
+        {
+            return data != null && data.Info != null && data.Info.Category == ElementCategory.Small;
         }
 
         // Parts belonging to THIS device that aren't currently installed - bench, bin, floor.
@@ -451,7 +477,7 @@ namespace RestoryTweaks
             if (wanted == null) return false;
 
             foreach (var el in loose)
-                if (el != null && ReferenceEquals(el.Info, wanted) && IsReady(el)) return true;
+                if (el != null && ReferenceEquals(el.Info, wanted) && CanFit(el)) return true;
             return false;
         }
 
@@ -463,7 +489,7 @@ namespace RestoryTweaks
             if (wanted == null || loose == null) return null;
 
             foreach (var el in loose)
-                if (el != null && ReferenceEquals(el.Info, wanted) && IsReady(el)) return el;
+                if (el != null && ReferenceEquals(el.Info, wanted) && CanFit(el)) return el;
             return null;
         }
 
@@ -478,9 +504,10 @@ namespace RestoryTweaks
                 if (el == null) { loose.RemoveAt(i--); continue; }
                 if (!ReferenceEquals(el.Info, wanted)) continue;
 
-                // Never fit an unfinished part, even on the manual trigger - putting a dirty or
-                // broken part back into the device is never the intent.
-                if (!IsReady(el)) continue;
+                // Never fit a dirty, burnt or broken part - putting one of those back into the
+                // device is never the intent. Whether you've inspected it is a different matter and
+                // deliberately not asked here; in competition mode nothing ever gets inspected.
+                if (!CanFit(el)) continue;
 
                 loose.RemoveAt(i);
                 return el;
