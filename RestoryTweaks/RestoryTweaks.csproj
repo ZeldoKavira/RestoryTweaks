@@ -22,6 +22,8 @@
     <!-- The game. Assembly-CSharp holds almost nothing; the real code is Restory.Assembly. -->
     <Reference Include="Restory.Assembly"><HintPath>$(ManagedDir)\Restory.Assembly.dll</HintPath></Reference>
     <Reference Include="Assembly-CSharp"><HintPath>$(ManagedDir)\Assembly-CSharp.dll</HintPath></Reference>
+    <!-- Holds TextureMaskHolder, which carries the dirt texture on every element. -->
+    <Reference Include="PWSMechanic"><HintPath>$(ManagedDir)\PWSMechanic.dll</HintPath></Reference>
 
     <!-- Unity -->
     <Reference Include="UnityEngine"><HintPath>$(ManagedDir)\UnityEngine.dll</HintPath></Reference>

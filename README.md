@@ -23,6 +23,10 @@ it stops the moment you leave the repair pad rather than finishing up behind you
 it off and on mid-game — it also abandons a run already under way, so you can take a device back
 apart by hand. The setting is saved, and F6 still assembles on demand while it's off.
 
+**Force repair (Ctrl+F8)** — rescue only. Fills every remaining socket on the device at the bench,
+recreating parts that no longer exist if it has to, and sets everything to perfect. It's for a
+device that can't be finished any other way; needs Ctrl held so it can't be hit by accident.
+
 ## Settings
 
 `BepInEx/config/net.zeldo.restorytweaks.cfg`, created on first run.
@@ -31,7 +35,7 @@ apart by hand. The setting is saved, and F6 still assembles on demand while it's
 | --- | --- |
 | `OrderParts` | `BuyImmediately`, `QuantityPerDoubleClick`, `OnlyMissingParts` |
 | `Delivery` | `PartsStraightToPartsBox`, `ShowNotification` |
-| `AutoAssemble` | `RequireEveryPartReady`, `DelayBetweenPartsMs` (750), `DelayBetweenScrewsMs` (200), `AssembleNowKey` (F6), `ToggleKey` (F7) |
+| `AutoAssemble` | `RequireEveryPartReady`, `DelayBetweenPartsMs` (750), `DelayBetweenScrewsMs` (200), `AssembleNowKey` (F6), `ToggleKey` (F7), `ForceRepairKey` (Ctrl+F8) |
 | `AutoOpenCleaner` | `Enabled`, `SelectTool`, `OnlyForDeviceParts` |
 
 ## Installing

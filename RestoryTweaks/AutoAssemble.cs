@@ -32,6 +32,7 @@ namespace RestoryTweaks
         internal static ConfigEntry<float> ScrewDelayMs;
         internal static ConfigEntry<KeyboardShortcut> Key;
         internal static ConfigEntry<KeyboardShortcut> ToggleKey;
+        internal static ConfigEntry<KeyboardShortcut> ForceRepairKey;
 
         public static void Init(ConfigFile cfg)
         {
@@ -49,6 +50,12 @@ namespace RestoryTweaks
                     new AcceptableValueRange<float>(0f, 5000f)));
             Key = cfg.Bind("AutoAssemble", "AssembleNowKey", new KeyboardShortcut(KeyCode.F6),
                 "Assemble right now, without waiting for every part to be ready.");
+            ForceRepairKey = cfg.Bind("AutoAssemble", "ForceRepairKey",
+                new KeyboardShortcut(KeyCode.F8, KeyCode.LeftControl),
+                "RESCUE ONLY. Fills every remaining socket on the device at the bench - recreating " +
+                "parts that no longer exist if it has to - and sets everything to perfect. Meant " +
+                "for a device that can't be finished any other way. Deliberately needs Ctrl held, " +
+                "so it can't be hit by accident.");
             ToggleKey = cfg.Bind("AutoAssemble", "ToggleKey", new KeyboardShortcut(KeyCode.F7),
                 "Turn automatic assembly on or off without restarting, and stop a run already " +
                 "under way. The new setting is saved, so it survives a restart. The assemble-now " +
@@ -220,7 +227,7 @@ namespace RestoryTweaks
         // hold a part with Progress == 0. A screw left at Progress 1 therefore blocks everything it
         // covers, which is why assembly deadlocked with every remaining socket "blocked" - the
         // attach was only ever half the operation.
-        public static bool TryDriveScrew(ElementSocket socket, out string why)
+        public static bool TryDriveScrew(ElementSocket socket, List<ElementBase> loose, out string why)
         {
             why = null;
             try
@@ -229,7 +236,16 @@ namespace RestoryTweaks
                 if (socket.NestedElement != null) { why = "already filled"; return false; }
 
                 var screw = socket.LastNestedElement;
-                if (screw == null) { why = "socket doesn't remember a screw"; return false; }
+
+                // A socket can forget which screw was its own. Leaving the bench runs
+                // Device.ThrowLooseElements, which cancels and detaches any screw that wasn't
+                // fully driven - so a run interrupted partway leaves sockets available but with
+                // lastNestedElement empty. The screws themselves are still on the bench, and
+                // screws of a type are interchangeable, so match one by type rather than giving up.
+                // Without this the device can never be finished again, by the mod or by hand.
+                if (screw == null) screw = PeekMatching(loose, socket);
+
+                if (screw == null) { why = "no screw of this type left on the bench"; return false; }
 
                 // Destroy the phantom FIRST, exactly as ResolveProjectionActivated does. Skipping
                 // this leaves the projection sitting over a screw that's already in, so seated
@@ -252,6 +268,10 @@ namespace RestoryTweaks
 
                 if (screw.Progress > 0f)
                     why = $"screw seated but progress is {screw.Progress:0.00}";
+
+                // Claim it either way. A remembered screw can also be sitting in the loose list, and
+                // leaving it there let a later socket take the same element back out again.
+                if (loose != null) loose.Remove(screw);
 
                 return true;
             }
@@ -412,6 +432,18 @@ namespace RestoryTweaks
             return false;
         }
 
+        // The element this socket would take, left in place. Used where the caller only removes it
+        // from the list once the attach has actually succeeded.
+        public static ElementBase PeekMatching(List<ElementBase> loose, ElementSocket socket)
+        {
+            var wanted = socket.CompatibleElementInfo;
+            if (wanted == null || loose == null) return null;
+
+            foreach (var el in loose)
+                if (el != null && ReferenceEquals(el.Info, wanted) && IsReady(el)) return el;
+            return null;
+        }
+
         public static ElementBase TakeMatching(List<ElementBase> loose, ElementSocket socket)
         {
             var wanted = socket.CompatibleElementInfo;
@@ -502,6 +534,16 @@ namespace RestoryTweaks
                 // Ahead of the _running guard on purpose: the point of the toggle is to be able to
                 // stop a run that's already under way and put a device back the way you want it.
                 if (AutoAssembleConfig.ToggleKey.Value.IsDown()) Toggle();
+
+                // Also ahead of the running guard: the device it rescues may be one a run is
+                // currently stuck on.
+                if (AutoAssembleConfig.ForceRepairKey.Value.IsDown())
+                {
+                    _cancel = true;             // don't have both writing to the same sockets
+                    ForceRepair.Run();
+                    _lastStuckAt = 0; _saidStuck = false; _lastIdleReason = 0;
+                    return;
+                }
 
                 if (_running) return;
 
@@ -738,7 +780,7 @@ namespace RestoryTweaks
 
                     if (small)
                     {
-                        if (!AutoAssemble.TryDriveScrew(socket, out string why))
+                        if (!AutoAssemble.TryDriveScrew(socket, loose, out string why))
                         {
                             // Report the first refusal only; otherwise every screw logs every pass.
                             if (screwProblem == null && why != null) screwProblem = why;

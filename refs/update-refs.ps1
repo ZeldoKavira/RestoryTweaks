@@ -28,6 +28,7 @@ $needed = @(
     'Assembly-CSharp'
     'DOTween'
     'Newtonsoft.Json'
+    'PWSMechanic'
     'Sirenix.OdinInspector.Attributes'
     'Sirenix.Serialization'
     'Sirenix.Utilities'
